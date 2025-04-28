@@ -102,7 +102,8 @@ app.get("/start", async (req, res) => {
         await page.keyboard.press('Enter');
       }
     }
-
+    
+    await new Promise(resolve => setTimeout(resolve, waitTimeOut));
     await page.waitForSelector('#search-AB-Testing input');
     await page.type('#search-AB-Testing input', searchParam);
     await page.keyboard.press('Enter');
