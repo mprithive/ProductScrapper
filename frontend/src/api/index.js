@@ -2,8 +2,9 @@ import axios from 'axios';
 
 const baseUrl = "http://localhost:5000";
 
-export function startOperation({userName, searchParam, waitTimeout}) {
-    axios.get(`${baseUrl}/start?user_name=${userName}&searchParam=${searchParam}&waitTimeout=${waitTimeout}`)
+export function startOperation({userName, searchParam, waitTimeout, pageTimeout, doLogin}) {
+    axios.get(`${baseUrl}/start?user_name=${userName}&searchParam=${searchParam}&waitTimeout=${waitTimeout}
+        &pageTimeout=${pageTimeout}&doLogin=${doLogin}`)
     .then((data) => {
         console.log(data)
     })

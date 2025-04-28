@@ -5,14 +5,19 @@ import Switch from '@mui/material/Switch';
 import './App.css';
 import { isNumberString } from './utils';
 import { startOperation, cancelOperation } from './api';
+import FormGroup from '@mui/material/FormGroup';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Checkbox from '@mui/material/Checkbox';
 
 function App() {
 
-    const [imgSrc, setImgSrc] = useState('');
     const [userName, setUsername] = useState("");
     const [searchParam, setSearchParam] = useState("");
     const [waitTimeout, setWaitTimeout] = useState("");
     const [pageTimeout, setPageTimeout] = useState("");
+    const [pagelogs, setPagelogs] = useState([]);
+    const [doLogin, setDoLogin] = useState(false);
+    const [response, setResponse] = useState(null);
 
     const [userNameErr, setUserNameErr] = useState(false);
     const [searchParamErr, setSearchParamErr] = useState(false);
@@ -29,7 +34,6 @@ function App() {
     }
 
     const Start = () => {
-
       if(!userName || userName === "") {
         setUserNameErr(true)
         return
@@ -49,10 +53,8 @@ function App() {
         setPageTimeoutErr(true)
         return
       }
-
-
       setStarted(true);
-      startOperation({userName, searchParam, waitTimeout})
+      startOperation({userName, searchParam, waitTimeout, pageTimeout, doLogin})
     }
 
     const Cancel = () => {
@@ -85,8 +87,15 @@ function App() {
             }
             return
           case "LOGS":
+            setPagelogs((prevLogs) => [...prevLogs, parsed.data]);
+            console.log(parsed.data);
+            return
+          case "OTP":
+            const valueToSend = prompt(parsed.userInput); 
+            ws.send(valueToSend);
             return
           case "RESPONSE":
+            setResponse(parsed.data)
             return
         }
        
@@ -108,18 +117,29 @@ function App() {
               <div className='row'>
                 <div className='col-md-3'>
                     <div style={{backgroundColor : "#fff", height : "300px"}}>
+
                       <h6>Input Parameters</h6>
+                        <FormGroup>
+                          <FormControlLabel control={<Checkbox onChange={() => {
+                            setDoLogin(() => {
+                               return doLogin ? false : true
+                            });
+                          }} 
+                          />} label="Perform login" />
+                        </FormGroup>
+
                         <TextField  
                         onChange={(e) => {
                             setUserNameErr(false)
                             setUsername(e.target.value)
                         }} 
                         id="standard-basic"
-                        label="Username"
+                        label="Email / Mobile No"
                         variant="standard"
                         error={userNameErr}
                         disabled={started}
                         />
+
                         <TextField 
                         onChange={(e) => {
                           setSearchParamErr(false)
@@ -135,7 +155,7 @@ function App() {
                 </div>
                 <div className='col-md-4'>
                   <div style={{backgroundColor : "#fff", height : "300px"}}>
-                    <h6>Config Parameters</h6>
+                    <h6>Configuration</h6>
 
                     <TextField 
                       id="standard-basic"
@@ -162,7 +182,7 @@ function App() {
                       disabled={started}
                     />
                     <div style={{marginTop : "30px"}}>
-                      <h6> Live Stream </h6>
+                      <h6> Live Preview </h6>
                       <Switch onChange={onEnableLiveStream}/>
                     </div>
                     <div style={{marginTop : "30px"}}>
@@ -183,7 +203,7 @@ function App() {
                   : 
                   <div style={{display : "flex", justifyContent : "center"}}>
                     <div style={{display : "flex", justifyContent : "center", width : "530px", backgroundColor : "#000", height : "300px", border : "1px solid #ddd", borderRadius : "10px"}}>
-                      <h6 style={{marginTop : "10%", color : "#fff"}}> Stream Paused!</h6>
+                      <h6 style={{marginTop : "10%", color : "#fff"}}> Preview Paused!</h6>
                     </div>
                    
                   </div>
@@ -195,14 +215,27 @@ function App() {
               <div className='row' style={{marginTop : "20px"}}>
                 <div className='col-md-5'>
                 <h6>Logs</h6>
-                    <div className="inner-shadow" style={{borderRadius : "10px", backgroundColor : "#fff", height : "400px", width : "500px"}}>
-                   
+                    <div className="inner-shadow" style={{borderRadius : "10px", backgroundColor : "#fff", height : "350px", maxHeight: "400px", overflow:"scroll", width : "500px"}}>
+                      {pagelogs && pagelogs.map((log, idx) => (
+                          <p key={idx}>{log}</p>
+                      ))}
                     </div>
                 </div>
-                <div className='col-md-6' >
+                <div className='col-md-7' >
                 <h6>Response</h6>
-                <div className="inner-shadow" style={{borderRadius : "10px", backgroundColor : "#fff", height : "400px", width : "760px"}}>
-                    
+                <div className="inner-shadow" style={{borderRadius : "10px", backgroundColor : "#fff", height : "350px", width : "760px", maxWidth : "760px", overflow : "scroll"}}>
+                {response  &&
+                      <div style={{marginTop:"25px", marginLeft : "15px"}}>
+                        <h5>Json : </h5>
+                        <p>{JSON.stringify(response, null, 2)}</p>
+                      </div>}
+                     
+
+                      {response && <div style={{marginTop:"25px", marginLeft : "15px"}}>
+                          <h5>Order Cart:</h5>
+                          <h6>Product Title : {response.productTitle}</h6>
+                          <h6>Product Price : {response.productPrice}</h6>
+                      </div>}
                     </div>
                 </div>
               </div>

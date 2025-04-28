@@ -6,10 +6,15 @@ const WebSocket = require('ws');
 const app = express();
 const server = require('http').createServer(app);
 const wss = new WebSocket.Server({ server, path: '/ws' });
+const log = require("./helpers/logging");
+const preview = require("./helpers/preview");
+const response = require("./helpers/response");
+
 puppeteer.use(StealthPlugin());
 let wsClient = null, browser = null, page = null;
 let streaming = false; 
 let sendFrameTimeout;  
+let pendingInputResolve = null;
 
 app.use(cors());
 
@@ -20,58 +25,126 @@ wss.on('connection', async (ws) => {
     browser = await puppeteer.launch({ headless: true });
     page = await browser.newPage();
   }
+
+  ws.on('message', function(message) {
+    console.log('Received from client:', message.toString());
+   
+    if (pendingInputResolve) {
+        pendingInputResolve(message.toString());
+        pendingInputResolve = null;
+    }
+  });
 });
-
-//logged-in-user
-// card-input-container card-input-login
-// const test = document.getElementsByClassName("mf-dots")
-// Array.from(test[0].children).forEach((ele, idx) => { ele.innerHTML = idx + 1})
-
-
-//search-AB-Testing - > closest input div
-
-  // Type into the input field inside the #search-AB-Testing div
-//   await page.type('#search-AB-Testing input', 'Test Search');
-
-  // Press Enter key
-//   await page.keyboard.press('Enter');
 
 
 app.get("/start", async (req, res) => {
   let responseSent = false;
-
+  const searchParam = req.query.searchParam;
+  const doLogin = req.query.doLogin;
+  const userName = req.query.user_name;
+  const waitTimeOut = req.query.waitTimeout;
+  const pageTimeout = req.query.pageTimeout;
+  
   try {
     streaming = true;
     async function sendtoClient () {
       if (!streaming) return;
       try{
         const base64Screenshot = await page.screenshot({ type: 'jpeg', quality: 80, encoding: 'base64' });
-        if (wsClient && wsClient.readyState === WebSocket.OPEN) {
-            console.log("Sending frame")
-            wsClient.send(JSON.stringify({
-              type: "FRAME",
-              data: base64Screenshot
-            }));
-        }
+        preview(wsClient, base64Screenshot)
       }
      catch (err) {
         if (err.message.includes('Target closed')) {
           console.error("Browser closed during screenshot capture. Stopping recording.");
+          log(wsClient, "Browser closed");
           return; 
         }
         throw err; 
       }
       sendFrameTimeout = setTimeout(sendtoClient, 100);
     } 
+    function requestInput(text) {
+      return new Promise((resolve) => {
+          if (wsClient && wsClient.readyState === WebSocket.OPEN) {
+              wsClient.send(JSON.stringify({ type: 'OTP', userInput: text }));
+              pendingInputResolve = resolve;
+          } else {
+              console.error('connection error');
+              resolve(null);
+          }
+      });
+    }
+
+    log(wsClient, "Process Started");
     await sendtoClient();
 
-    await page.goto('https://www.croma.com', {   timeout: 30000,  waitUntil: 'networkidle0' });
-    page.waitForNavigation({ waitUntil: 'networkidle0' })
-    await new Promise(resolve => setTimeout(resolve, 10000));
+    await page.goto('https://www.croma.com', {   timeout: pageTimeout,  waitUntil: 'networkidle0' });
+    // page.waitForNavigation({ waitUntil: 'networkidle0' })
+    log(wsClient, `Waiting for ${waitTimeOut} ms`);
+    await new Promise(resolve => setTimeout(resolve, waitTimeOut));
+
+    if(JSON.parse(doLogin)) {
+      await page.waitForSelector('.logged-in-user a');
+      await page.click('.logged-in-user a');
+      await page.waitForSelector('.MuiDialogContent-root input');
+      await page.type('.MuiDialogContent-root input', userName);
+      await page.waitForSelector('.MuiDialogContent-root button');
+      await page.click('.MuiDialogContent-root button');
+      await page.waitForSelector('#divInner input');
+  
+      const userInput = await requestInput('Please enter the OTP');
+  
+      console.log('input:', userInput);
+  
+      if(userInput) {
+        await page.type('#divInner input', userInput);
+        await new Promise(resolve => setTimeout(resolve, waitTimeOut));
+        await page.keyboard.press('Enter');
+      }
+    }
+
     await page.waitForSelector('#search-AB-Testing input');
-    await page.type('#search-AB-Testing input', 'IPhone 16');
+    await page.type('#search-AB-Testing input', searchParam);
     await page.keyboard.press('Enter');
+
+    await page.waitForSelector('.cat-title-wrap');
+    
+    const h1Text = await page.$eval('.cat-title-wrap h1', el => el.textContent.trim());
+    const h1Count = await page.$eval('.cat-title-wrap h1 span', el => el.textContent.trim());
+    log(wsClient, `[Data] - ${h1Text} - ${h1Count}`);
+
+    const firstProductLink = await page.$eval(
+      'ul.product-list li.product-item:first-child a',
+      a => a.href
+    );
+    log(wsClient, `[Data] - First Product Link - ${firstProductLink}`);
+
+  let imgSrc = null;
+  const firstProductImg = await page.$('ul.product-list li.product-item:first-child a div.product-img img');
+  if (firstProductImg) {
+    imgSrc = await page.evaluate(img => img.getAttribute('src'), firstProductImg);
+    log(wsClient, `[Data] - Getting Image of it - ${imgSrc}`);
+  }
+
+
+   const productTitle = await page.$eval('ul.product-list li.product-item:first-child div.product-info h3 a', el => el.textContent.trim());
+   log(wsClient, `[Data] - Getting title of  it - ${productTitle}`);
+
+   const productPrice = await page.$eval('ul.product-list li.product-item:first-child div.product-info div.new-price span', el => el.textContent.trim());
+   log(wsClient, `[Data] - Getting Price of it - ${productPrice}`);
+   
+
+    const firstProductAnchor = await page.$('ul.product-list li.product-item:first-child a');
+    await firstProductAnchor.click();
+
+    log(wsClient, `[Data] - Getting inside it - ${firstProductLink}`);
+
+    await new Promise(resolve => setTimeout(resolve, waitTimeOut));
+
+    response(wsClient, {productTitle, productPrice, imgSrc})
+     
     if(!responseSent) {
+      log(wsClient, "All Process Initiated");
       res.status(200).send('Started');
       responseSent = true;
     }
@@ -86,7 +159,8 @@ app.get("/start", async (req, res) => {
       
     }
     if(!responseSent) {
-      res.status(500).send(e.message)
+      log(wsClient, `[Error] - ${JSON.stringify(e.message)}`);
+      res.status(200).send(e.message)
       responseSent = true;
     }
   }
@@ -107,7 +181,7 @@ app.get("/cancel", async (req, res)=> {
     res.status(200).send(true);
   }
   catch(e) {
-    res.status(500).send(e.message);
+    res.status(200).send(e.message);
   }
 
 })
