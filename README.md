@@ -39,4 +39,8 @@ By default backend will be serving in [http://localhost:5000](http://localhost:5
 
 ---
 
+![app screenshot](https://github.com/user-attachments/assets/72e6faa2-476f-4c9f-b4a2-bc794f2ae691)
+
+
+
 ## Play with it!
