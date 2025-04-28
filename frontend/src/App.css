@@ -36,3 +36,11 @@
     transform: rotate(360deg);
   }
 }
+
+.inner-shadow {
+  width: 200px;
+  height: 200px;
+  background: white;
+  box-shadow: inset 0px 4px 8px rgba(0, 0, 0, 0.5);
+  border: 1px solid #ccc;
+}
