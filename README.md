@@ -37,6 +37,8 @@ The app will be running at: [http://localhost:3000](http://localhost:3000)
 
 By default backend will be serving in [http://localhost:5000](http://localhost:5000)
 
+This app runs croma.com gadget store as sample 
+
 ---
 
 ## Play with it!
