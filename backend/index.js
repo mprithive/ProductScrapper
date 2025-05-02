@@ -22,7 +22,9 @@ wss.on('connection', async (ws) => {
   console.log('WebSocket client connected!');
   wsClient = ws;
   if(!browser || browser.connected === false) {
-    browser = await puppeteer.launch({ headless: true });
+    browser = await puppeteer.launch({ headless: false ,
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
     page = await browser.newPage();
   }
 
@@ -47,10 +49,10 @@ app.get("/start", async (req, res) => {
   
   try {
     streaming = true;
-    async function sendtoClient () {
+    async function sendtoClient (currentPage) {
       if (!streaming) return;
       try{
-        const base64Screenshot = await page.screenshot({ type: 'jpeg', quality: 80, encoding: 'base64' });
+        const base64Screenshot = await currentPage.screenshot({ type: 'jpeg', quality: 80, encoding: 'base64' });
         preview(wsClient, base64Screenshot)
       }
      catch (err) {
@@ -61,7 +63,7 @@ app.get("/start", async (req, res) => {
         }
         throw err; 
       }
-      sendFrameTimeout = setTimeout(sendtoClient, 100);
+      sendFrameTimeout = setTimeout(() => sendtoClient(currentPage), 100)
     } 
     function requestInput(text) {
       return new Promise((resolve) => {
@@ -76,10 +78,10 @@ app.get("/start", async (req, res) => {
     }
 
     log(wsClient, "Process Started");
-    await sendtoClient();
+    await sendtoClient(page);
 
     await page.goto('https://www.croma.com', {   timeout: pageTimeout,  waitUntil: 'networkidle0' });
-    // page.waitForNavigation({ waitUntil: 'networkidle0' })
+
     log(wsClient, `Waiting for ${waitTimeOut} ms`);
     await new Promise(resolve => setTimeout(resolve, waitTimeOut));
 
@@ -136,9 +138,40 @@ app.get("/start", async (req, res) => {
    
 
     const firstProductAnchor = await page.$('ul.product-list li.product-item:first-child a');
-    await firstProductAnchor.click();
 
-    log(wsClient, `[Data] - Getting inside it - ${firstProductLink}`);
+    log(wsClient, `[Data] - Getting inside it - ${firstProductLink}`)
+    const [newPage] = await Promise.all([
+      new Promise(resolve => {
+        console.log("popup triggred")
+        page.once('popup', resolve)
+      }), 
+      firstProductAnchor.click(), 
+    ]);
+
+ 
+
+    await sendtoClient(newPage);
+
+  await newPage.waitForFunction(() => {
+    window.scrollBy(0, window.innerHeight / 2);
+    const el = document.querySelector('#add_to_cart_footer_container');
+    return el && el.offsetHeight > 0 && window.getComputedStyle(el).display !== 'none';
+  }, { timeout: 10000, polling: 'mutation' });
+  
+  console.log('Add to Cart footer appeared.');
+  
+
+  const button = await newPage.$('#add_to_cart_footer_container button');
+  
+  if (button) {
+    await button.evaluate(b => b.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+    await new Promise(resolve => setTimeout(resolve, waitTimeOut)); 
+    await button.click();
+    console.log('Clicked Add to cart');
+    log(wsClient, `[Data] - Product Added to Cart `);
+  } else {
+    console.log('Button not found');
+  }
 
     await new Promise(resolve => setTimeout(resolve, waitTimeOut));
 
